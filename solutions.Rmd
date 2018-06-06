@@ -1,0 +1,33 @@
+---
+title: "Yahoo's Tumblr Failed Forecasts"
+author: "Oriental Mix / Data Hustler"
+date: "6/3/2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Load initial data 
+
+Our initial step is to load the data from our csv.
+We started by cleaning up the excel file and created two csv containing:
+- previous website visits history
+- yahoo's forecast leading to 1.2Bn valuation
+
+In order to a single environment we will directly compute the NPV from R in order to avoid having to export the data to excel.
+
+```{r cars}
+summary(cars)
+```
+
+## Including Plots
+
+You can also embed plots, for example:
+
+```{r pressure, echo=FALSE}
+plot(pressure)
+```
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
