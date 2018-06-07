@@ -5,16 +5,14 @@ install.packages("ggplot2")
 install.packages("smooth")
 install.packages("Mcomp")
 install.packages("ggfortify")
-
-library(ggfortify)
-
-require("forecast")
-require("FinancialMath")
-require("ggplot2")
-require("scales")
-require("xts")
-require("grid")
-require("gridExtra")
+install.packages("tinytex")
+require(forecast)
+require(FinancialMath)
+require(ggplot2)
+require(scales)
+require(xts)
+require(grid)
+require(gridExtra)
 require(smooth)
 require(Mcomp)
 
@@ -30,8 +28,10 @@ data_yahoo_forecast <-read.csv("model_pop_forecasts.csv", header = FALSE)
 ts_world_audience <- ts(data_monthly_audience, start=c(2010, 4), frequency=12) 
 ts_us_audience <- ts(data_us_audience, start=c(2010, 4), frequency=12) 
 ts_yahoo_forecast <- ts(data_yahoo_forecast, start=c(2010, 4), frequency=12) 
-autoplot(ts_world_audience, facets = TRUE)
-data_yahoo_forecast
+autoplot(ts_world_audience, facets = TRUE) + 
+  autolayer(ts_us_audience) + 
+  scale_y_continuous(labels=comma)
+
 
 # For the following we will only focus on the "People" WolrdWide part of our data because the financial valuation is based on this number and its forecasts.
 ts_world_data<-ts_world_audience[,"People"] # For worldwide data
@@ -46,7 +46,10 @@ ggplot() +
   scale_y_continuous(labels=comma) +
   ggtitle("People Worldwide unsing Tumblr") + xlab("") + ylab("")
 
-ggsubseriesplot(ts_world_data) + ggtitle("People Worldwide unsing Tumblr") + xlab("Month") + ylab("Thousands")
+plot_world_monthly_break <- ggsubseriesplot(ts_world_data) + ggtitle("People Worldwide using Tumblr") + xlab("Month") + ylab("Thousands") + scale_y_continuous(labels=comma)
+plot_us_monthly_break <- ggsubseriesplot(ts_us_data) + ggtitle("People US using Tumblr") + xlab("Month") + ylab("Thousands") + scale_y_continuous(labels=comma)
+grid.arrange(grobs=list(plot_world_monthly_break, plot_us_monthly_break), ncol=1) 
+
 View(ts_yahoo_forecast)
 
 # We can see an upward trend and no seasonality in the plot.
@@ -64,8 +67,7 @@ grid.arrange(grobs=list(plot_multiplicative, plot_additive, plot_stl), ncol=3)
 # Now we notice a pattern in the seasonal plot, what does it mean?
 # Most likely students will use less the application during the summer when they are not in school
 
-# One thing to worry about is the decrease trend at the end. Should it be ignored?
-
+# One thing to worry about is the decrease trend at the end. Should it be ignored for the valuation?
 
 #### Before to look at our forecasts, we should check the monthly growth on the existing data
 # and compare it to the 1.35% used by Yahoo
@@ -74,37 +76,33 @@ monthly_growth_world <- (lag(monthly_growth_world)/monthly_growth_world - 1) * 1
 monthly_growth_us <- ts(data_us_audience$People, start = c(2010, 4), frequency = 12)
 monthly_growth_us <- (lag(monthly_growth_us)/monthly_growth_us - 1) * 100
 
+growth_last_year_world <- window(ts_world_audience, start = c(2012,5), end=c(2013,5))
+growth_last_year_world <- (lag(growth_last_year_world)/growth_last_year_world - 1) * 100
+growth_last_year_us <- window(ts_us_audience, start = c(2012,5), end=c(2013,5))
+growth_last_year_us <- (lag(growth_last_year_us)/growth_last_year_us - 1) * 100
+
 average_world_growth <- mean(monthly_growth_world) # 5.6%
 average_us_growth <- mean(monthly_growth_us) # 4.8%
+average_lastyear_growth_world <- mean(growth_last_year_world) # 2.2%
+average_lastyear_growth_us <- mean(growth_last_year_us) # 1.05%
 
-plot_growth_world <- autoplot(average_world_growth, ts.geom = 'bar') + ggtitle("Monthly Growth (World)")
-plot_growth_us <- autoplot(plot_growth_us, ts.geom = 'bar') + ggtitle("Monthly Growth (US)")
+ts_average_growth <- ma(monthly_growth_world, order=2)
+autoplot(ts_average_growth)
+
+plot_growth_world <- autoplot(monthly_growth_world, ts.geom = 'bar') + ggtitle("Monthly Growth (World)") + geom_smooth(method='lm')
+plot_growth_us <- autoplot(monthly_growth_us, ts.geom = 'bar') + ggtitle("Monthly Growth (US)") + geom_smooth(method='lm')
+
 grid.arrange(grobs=list(plot_growth_world, plot_growth_us)) 
 # We can see that yearly growth trend is already 'dampening'
 
 
 ##############################################################
 ##############################################################
-# let's start our forecast with some benchmarking values using simple methods
 horizon <- 7 + 9*12 # 7months in 2013 + 9 years from 2014 to 2022
-
-autoplot(ts_world_data) +
-  autolayer(meanf(ts_world_data, h=horizon),
-            series="Mean", PI=FALSE) +
-  autolayer(rwf(ts_world_data, h=horizon),
-            series="Naïve", PI=FALSE) +
-  autolayer(rwf(ts_world_data, drift=TRUE, h=horizon),
-            series="Drift", PI=FALSE) +
-  ggtitle("People Worldwide unsing Tumblr") +
-  xlab("Month") + ylab("Thousands") +
-  guides(colour=guide_legend(title="Forecast"))
-
-# several exponential smoothing models to forecast the increase in the traffic
 level<-c(0.8,0.95) # Confidence Interval 80%, 95%
 
-"AAN damped=false"
 fit_drift <- rwf(ts_world_data, drift=TRUE, h=horizon)
-
+# several exponential smoothing models to forecast the increase in the traffic
 fit_ZZZ <- ets(ts_world_data, model="ZZZ", damped=FALSE)
 fit_ZZZ_damped <- ets(ts_world_data, model="ZZZ", damped=TRUE)
 fit_AAN <- ets(ts_world_data, model="AAN", damped=FALSE) # Additive noise, Additive Trend, No seasonality
@@ -121,6 +119,9 @@ fit_MMN <- ets(ts_world_data, model="MMN", damped=FALSE)
 fit_MMN_damped <- ets(ts_world_data, model="MMN", damped=TRUE)
 fit_us_MMN <- ets(ts_us_data, model="MMN", damped=FALSE)
 fit_us_MMN_damped <- ets(ts_us_data, model="MMN", damped=TRUE)
+
+fit_MMM <- ets(ts_world_data, model="MMM", damped=FALSE)
+fit_MMM_damped <- ets(ts_world_data, model="MMM", damped=TRUE)
 
 fit_MMZ <- ets(ts_world_data, model="MMZ", damped=FALSE)
 fit_MMZ_damped <- ets(ts_world_data, model="MMZ", damped=TRUE)
@@ -150,6 +151,9 @@ pred_MMN_damped <- forecast(fit_MMN_damped, h=horizon, level=level)
 pred_us_MMN <- forecast(fit_us_MMN, h=horizon, level=level)
 pred_us_MMN_damped <- forecast(fit_us_MMN_damped, h=horizon, level=level)
 
+pred_MMM <- forecast(fit_MMM, h=horizon, level=level)
+pred_MMM_damped <- forecast(fit_MMM_damped, h=horizon, level=level)
+
 pred_MMZ <- forecast(fit_MMZ, h=horizon, level=level)
 pred_MMZ_damped <- forecast(fit_MMZ_damped, h=horizon, level=level)
 #Create a trigonometric box-cox autoregressive trend seasonality (TBATS) models
@@ -157,46 +161,53 @@ pred_tbats <- forecast(fit_TBATS, h=horizon, level=level)
 pred_arima <- forecast(fit_arima, h=horizon, level=level)
 # $fitted is existing values while $mean are forecasted results
 
-plot_drift<-autoplot(fit_drift, xlab="Year", ylab="Drift Benchmark") + scale_y_continuous(labels=comma) + labs(colour = "legend title") 
+# Use a common scale for all graphs to have better visualisation from 0 to 1Bn users.
+limits<-c(0,1000000000)
 
-plot_drift
+ts_yahoo_small <- window(ts_yahoo_forecast, start=c(2013,6))
+plot_yahoo <- autoplot(ts_yahoo_forecast, ylab="Yahoo - 1,200M") + scale_y_continuous(labels=comma, limits = limits) 
+plot_yahoo
+plot_drift<-autoplot(fit_drift, xlab="Year", ylab="Drift Benchmark - 930M") + scale_y_continuous(labels=comma, limits = limits) + labs(colour = "legend title") 
 
-plot_zzz<-autoplot(pred_ZZZ, xlab="Year", ylab="Predicted 'ZZZ'") + scale_y_continuous(labels=comma)
-plot_zzz_damped<-autoplot(pred_ZZZ_damped, xlab="Year", ylab="Predicted 'ZZZ+damped'") + scale_y_continuous(labels=comma)
+plot_zzz<-autoplot(pred_ZZZ, xlab="Year", ylab="ZZZ - 703M") + scale_y_continuous(labels=comma, limits = limits)
+plot_zzz_damped<-autoplot(pred_ZZZ_damped, xlab="Year", ylab="ZZZ+damped - 351M") + scale_y_continuous(labels=comma, limits = limits)
 grid.arrange(grobs=list(plot_zzz,plot_zzz_damped), ncol=2)
 
-plot_AAN<-autoplot(pred_AAN, xlab="Year", ylab="Predicted 'AAN'") + scale_y_continuous(labels=comma)
-plot_AAN_damped<-autoplot(pred_AAN_damped, xlab="Year", ylab="Predicted 'AAN+damped'") + scale_y_continuous(labels=comma)
+plot_AAN<-autoplot(pred_AAN, xlab="Year", ylab="AAN - 1,004M") + scale_y_continuous(labels=comma, limits = limits)
+plot_AAN_damped<-autoplot(pred_AAN_damped, xlab="Year", ylab="AAN+damped - 485M") + scale_y_continuous(labels=comma, limits = limits)
 grid.arrange(grobs=list(plot_AAN,plot_AAN_damped), ncol=2)
 
-plot_AAZ<-autoplot(pred_AAZ, xlab="Year", ylab="Predicted 'AAZ'") + scale_y_continuous(labels=comma)
-plot_AAZ_damped<-autoplot(pred_AAZ_damped, xlab="Year", ylab="Predicted 'AAZ+damped'") + scale_y_continuous(labels=comma)
-plot_MAZ<-autoplot(pred_MAZ, xlab="Year", ylab="Predicted 'MAZ'") + scale_y_continuous(labels=comma)
-plot_MAZ_damped<-autoplot(pred_MAZ_damped, xlab="Year", ylab="Predicted 'MAZ+damped'") + scale_y_continuous(labels=comma)
+
+plot_AAZ<-autoplot(pred_AAZ, xlab="Year", ylab="AAZ - 1,004M") + scale_y_continuous(labels=comma, limits = limits) 
+plot_AAZ
+plot_AAZ_damped<-autoplot(pred_AAZ_damped, xlab="Year", ylab="AAZ+damped - 485M") + scale_y_continuous(labels=comma, limits = limits)
+plot_MAZ<-autoplot(pred_MAZ, xlab="Year", ylab="MAZ - 702M") + scale_y_continuous(labels=comma)
+plot_MAZ_damped<-autoplot(pred_MAZ_damped, xlab="Year", ylab="MAZ+damped - 350M") + scale_y_continuous(labels=comma, limits = limits)
+
+plot_MMN<-autoplot(pred_MMN, xlab="Year", ylab="MMN - 546M") + scale_y_continuous(labels=comma, limits = limits)
+plot_MMN_damped<-autoplot(pred_MMN_damped, xlab="Year", ylab="MMN+damped - 514M") + scale_y_continuous(labels=comma, limits = limits)
+
+plot_MMM<-autoplot(pred_MMN, xlab="Year", ylab="MMM - 55M") + scale_y_continuous(labels=comma, limits = limits)
+plot_MMM_damped<-autoplot(pred_MMN_damped, xlab="Year", ylab="MMM+damped - 251M") + scale_y_continuous(labels=comma, limits = limits)
 
 
-plot_MMN<-autoplot(pred_MMN, xlab="Year", ylab="Predicted 'People'") + scale_y_continuous(labels=comma)
-plot_MMN_damped<-autoplot(pred_MMN_damped, xlab="Year", ylab="Predicted 'People'") + scale_y_continuous(labels=comma)
-
-plot_MMZ <- autoplot(pred_MMZ, xlab="Year", ylab="Predicted 'MMZ'") + scale_y_continuous(labels=comma)
-plot_MMZ <- autoplot(pred_MMZ_damped, xlab="Year", ylab="Predicted 'MMZ+damped'") + scale_y_continuous(labels=comma)
-
-plot_tbats <- autoplot(pred_tbats, xlab="Year", ylab="Predicted 'TBATS'") + scale_y_continuous(labels=comma)
-plot_arima <- autoplot(pred_arima, xlab="Year", ylab="Predicted 'ARIMA'") + scale_y_continuous(labels=comma)
+plot_tbats <- autoplot(pred_tbats, xlab="Year", ylab="TBATS - 515M") + scale_y_continuous(labels=comma, limits = limits)
+plot_arima <- autoplot(pred_arima, xlab="Year", ylab="ARIMA - 414M") + scale_y_continuous(labels=comma, limits = limits)
 
 # Global view of our models
-lay <- rbind(c(1,1),
-             c(2,3),
-             c(4,5),
-             c(6,7),
-             c(8,9),
-             c(10,11))
-grid.arrange(grobs=list(plot_drift, plot_zzz,plot_zzz_damped, plot_AAZ,plot_AAZ_damped,plot_MAZ, plot_MAZ_damped, plot_MMN, plot_MMN_damped, plot_arima, plot_tbats), ncol=2, nrow=6, layout_matrix=lay)
+lay <- rbind(c(1,2),
+             c(3,4), # zzz
+             c(5,6), # aaz
+             c(7,8), # maz
+             c(9,10), # mmn
+             c(11,12), # mmm
+             c(13,14) ) # arima, tbats
+grid.arrange(grobs=list(plot_yahoo, plot_drift, plot_zzz,plot_zzz_damped, plot_AAZ,plot_AAZ_damped,plot_MAZ, plot_MAZ_damped, plot_MMN, plot_MMN_damped, plot_MMM, plot_MMM_damped, plot_arima, plot_tbats), ncol=2, nrow=7, layout_matrix=lay)
 ################################
 ################################
 ################################
 
-### VALUATION automation function to quickly check the forecast instead of going through excel
+###  automation functions to quickly check the forecast instead of going through excel
 valuation <- function(prediction, debug) {
   
   if(missing(debug)) {
@@ -271,6 +282,7 @@ valuation <- function(prediction, debug) {
   return(cbind(firmValue=firmValue))
 }
 
+# Second valuation model using forecasts from world+us (instead of derivating us forecast from world views)
 valuationAdvanced <- function(predictionWorld, predictionUS, debug) {
   
   if(missing(debug)) {
@@ -344,23 +356,30 @@ valuationAdvanced <- function(predictionWorld, predictionUS, debug) {
 ############ VALUATION ################
 #######################################
 
-valuation(ts_yahoo_forecast, debug=FALSE) #  1230
+valuation(ts_yahoo_forecast, debug=TRUE) #  1230
 
 valuation(pred_drift$mean) # 930
 valuation(pred_ZZZ$mean) # 703
+valuation(pred_ZZZ_damped$mean) # 351
 
-valuation(pred_AAZ$mean) # 1004
-valuation(pred_AAZ_damped$mean) # 485
+valuation(pred_AAN$mean) # 1004
+valuation(pred_AAN_damped$mean) # 485
 
 valuation(pred_AAZ$mean) # 1004
 valuation(pred_AAZ_damped$mean) # 485
 valuationAdvanced(pred_AAZ$mean, pred_us_AAZ$mean, debug=TRUE) # 1338
 
-valuation(pred_MMZ$mean) # 546
+valuation(pred_MAZ$mean) # 702
+valuation(pred_MAZ_damped$mean) # 350
+
+valuation(pred_MMN$mean) # 546
 valuation(pred_MMN_damped$mean) # 513
 
 valuationAdvanced(pred_MMN$mean, pred_us_MMN$mean) # 515
 valuationAdvanced(pred_MMN$mean, pred_us_MMN_damped$mean) # 620
+
+valuation(pred_MMM$mean) # 55.23
+valuation(pred_MMM_damped$mean) # 251
 
 valuation(pred_arima$mean) # 515
 valuation(pred_tbats$mean) # 454
@@ -371,9 +390,6 @@ ts_yahoo_small <- window(ts_yahoo_forecast, start=c(2013,6))
 yahoo <- data.frame(Date=time(ts_yahoo_small), People=ts_yahoo_small[,1])
 drift <- data.frame(Date=time(pred_drift$mean), People=fit_drift$mean)
 
-pred_MMN_damped$mean
-time(pred_MMN_damped)
-time(pred_MMN_damped$mean)
 mmn_damped <- data.frame(Date=time(pred_MMN_damped$mean), People=pred_MMN_damped$mean)
 arima = data.frame(Date=time(pred_arima$mean), People=pred_arima$mean)
 tbats = data.frame(Date=time(pred_tbats$mean), People=pred_tbats$mean)
@@ -382,9 +398,11 @@ ggplot() +
   geom_line(data = data, aes(y=People, x=Date)) +
   geom_line(data=yahoo, aes(y=People, x=Date, color="Yahoo - DCF=1,230 Million")) +
   geom_line(data=drift, aes(y=People, x=Date, color="Drift - DCF=930 Million")) +
-  geom_line(data=mmn_damped, aes(y=People, x=Date, color="MMNdamped - DCF=513 Million")) +
+  geom_line(data=mmn_damped, aes(y=People, x=Date, color="MMNd - DCF=513 Million")) +
   geom_line(data=arima, aes(y=People, x=Date, color="ARIMA - DCF=515 Million")) +
   geom_line(data=tbats, aes(y=People, x=Date, color="TBATS - DCF=454 Million")) +
   scale_y_continuous(labels=comma) +
-  ggtitle("Tumblr Valuation Scenarios") + xlab("") + ylab("")
+  ggtitle("Tumblr Valuation Scenarios") + xlab("") + ylab("") 
+  
+
   
