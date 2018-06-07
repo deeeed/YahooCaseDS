@@ -1,3 +1,3 @@
 Datascience for Business MBA case
 
-check [a solutions](solutions.Rmd) for solutions.
+check [solutions](solutions.Rmd)
